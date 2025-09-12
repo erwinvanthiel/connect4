@@ -20,7 +20,7 @@ class PpoAgent():
                  alpha=0.000005,
                  view_training_process=False,
                  load_from_path=None,
-                 save_to_path="model.pth"):
+                 save_to_path=""):
         super(PpoAgent, self).__init__()
         self.train = True
         self.action_probabilties = np.empty(memory_size)
@@ -30,7 +30,7 @@ class PpoAgent():
         self.dones = np.empty(memory_size)
         self.network = ActorCritic(state_dims[0], state_dims[1], state_dims[2],
                                    state_dims[2])
-        self.states = np.empty((memory_size, ) + state_dims)
+        self.states = torch.empty((memory_size, ) + state_dims)
         self.memory_size = memory_size
         self.batch_size = batch_size
         self.policy_clip = policy_clip
@@ -43,6 +43,9 @@ class PpoAgent():
         self.save_to_path = save_to_path
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
+
+        self.states.to(self.device)
+        self.network.to(self.device)
 
         # configure optimizeres for both heads and shared backbone
         actor_params = list(self.network.actor_fc1.parameters()) + list(
@@ -63,6 +66,8 @@ class PpoAgent():
         if load_from_path:
             self.network.load_state_dict(torch.load(load_from_path))
 
+        self.episode = 0
+
     def choose_action(self, board):
         state = torch.tensor(np.expand_dims(board.board,
                                             axis=0)).float().to(self.device)
@@ -74,7 +79,8 @@ class PpoAgent():
         valid_moves_mask = torch.zeros(state.shape[-1])
         valid_moves_mask[valid_moves] = 1
         valid_moves_mask = 1 - valid_moves_mask
-        logits = logits - (valid_moves_mask * 100000000)
+        valid_moves_mask = valid_moves_mask.to(self.device)
+        logits = logits.to(self.device) - (valid_moves_mask * 100000000)
         pi = Categorical(torch.nn.functional.softmax(logits, dim=-1))
 
         # the sampled action
@@ -96,8 +102,9 @@ class PpoAgent():
             self.learn()
             self.iteration = 0
             self.total_reward = 0
-            torch.save(self.network.state_dict(), self.save_to_path)
-
+            if self.episode % 1000 == 0:
+              torch.save(self.network.state_dict(), os.path.join(self.save_to_path, f"model-{self.episode}.pth"))
+            self.episode += 1
         a, pi, value = self.choose_action(board)
 
         # a = torch.tensor([random.Random().randint(0, 11)]).cuda() # FOR DEBUGGING
@@ -110,7 +117,7 @@ class PpoAgent():
         self.action_probabilties[self.iteration] = pi.log_prob(a)
 
         # perform the action
-        board.make_move(a)
+        board.make_move(a.cpu())
 
         self.dones[self.iteration] = board.game_won() or board.game_tied()
         reward = board.get_reward()
