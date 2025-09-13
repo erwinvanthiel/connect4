@@ -262,10 +262,11 @@ class PPOPlayer(Player):
 
     def __init__(self, name: str) -> None:
         super().__init__(name)
-        self.agent = PpoAgent((3, 6, 7), 7, load_from_path="model.pth")
+        self.agent = PpoAgent((3, 6, 7), 7, load_from_path="models/model.pth", train=False)
 
     def get_move(self, board: Board) -> int:
         a, _, _ = self.agent.choose_action(board)
+        time.sleep(0.75)
         return a.item()
 
 

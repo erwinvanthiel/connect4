@@ -19,10 +19,11 @@ class PpoAgent():
                  gae_lambda=0.95,
                  alpha=0.000005,
                  view_training_process=False,
-                 load_from_path=None,
-                 save_to_path=""):
+                 load_from_path="/content/drive/MyDrive/c4/checkpoints/model-1000.pth",
+                 train=True,
+                 save_to_path="/content/drive/MyDrive/c4/checkpoints"):
         super(PpoAgent, self).__init__()
-        self.train = True
+        self.train = train
         self.action_probabilties = np.empty(memory_size)
         self.values = np.empty(memory_size)
         self.actions_taken = np.empty(memory_size)
@@ -64,9 +65,9 @@ class PpoAgent():
         self.critic_optimizer = torch.optim.Adam(critic_params, lr=1e-3)
 
         if load_from_path:
-            self.network.load_state_dict(torch.load(load_from_path))
+            self.network.load_state_dict(torch.load(load_from_path, map_location=torch.device('cpu')))
 
-        self.episode = 0
+        self.episode = 1000
 
     def choose_action(self, board):
         state = torch.tensor(np.expand_dims(board.board,
@@ -102,7 +103,7 @@ class PpoAgent():
             self.learn()
             self.iteration = 0
             self.total_reward = 0
-            if self.episode % 1000 == 0:
+            if self.episode % 100 == 0:
               torch.save(self.network.state_dict(), os.path.join(self.save_to_path, f"model-{self.episode}.pth"))
             self.episode += 1
         a, pi, value = self.choose_action(board)

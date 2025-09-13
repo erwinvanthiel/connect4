@@ -10,4 +10,4 @@ def train(agent: PpoAgent, episodes: int):
 
 
 agent = PpoAgent((3, 6, 7), 7)
-train(agent, 6400)
+train(agent, 64000000)
