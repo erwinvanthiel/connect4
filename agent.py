@@ -12,14 +12,14 @@ class PpoAgent():
                  state_dims,
                  num_actions,
                  n_epochs=8,
-                 memory_size=64,
-                 batch_size=8,
+                 memory_size=256,
+                 batch_size=32,
                  policy_clip=0.2,
                  gamma=0.99,
                  gae_lambda=0.95,
-                 alpha=0.000005,
+                 alpha=0.0001,
                  view_training_process=False,
-                 load_from_path="/content/drive/MyDrive/c4/checkpoints/model-1000.pth",
+                 load_from_path=None,
                  train=True,
                  save_to_path="/content/drive/MyDrive/c4/checkpoints"):
         super(PpoAgent, self).__init__()
@@ -70,8 +70,7 @@ class PpoAgent():
         self.episode = 1000
 
     def choose_action(self, board):
-        state = torch.tensor(np.expand_dims(board.board,
-                                            axis=0)).float().to(self.device)
+        state = torch.unsqueeze(board.board, dim=0).float().to(self.device)
         self.states[self.iteration] = state
 
         # the policy output, aka a probability distribution
@@ -106,9 +105,8 @@ class PpoAgent():
             if self.episode % 100 == 0:
               torch.save(self.network.state_dict(), os.path.join(self.save_to_path, f"model-{self.episode}.pth"))
             self.episode += 1
-        a, pi, value = self.choose_action(board.board)
+        a, pi, value = self.choose_action(board)
 
-        # a = torch.tensor([random.Random().randint(0, 11)]).cuda() # FOR DEBUGGING
         self.actions_taken[self.iteration] = a
 
         # the state value approximation, i.e. the Q-value approximation.
@@ -121,11 +119,11 @@ class PpoAgent():
         board.make_move(a.cpu())
 
         self.dones[self.iteration] = board.game_won() or board.game_tied()
-        reward = board.get_mcts_reward(lambda x: torch.nn.functional.softmax(self.network(x)[0], dim=-1), lambda x: torch.nn.functional.sigmoid(self.network(x)[1]), board, 3)
-        if reward == 1:
-            self.rewards[
-                self.iteration -
-                1] = -1  # when opponent wins, the previous move was bad
+        reward = board.get_mcts_reward(lambda x: torch.nn.functional.softmax(self.network(torch.unsqueeze(x, dim=0).float())[0], dim=-1)[0], lambda x: torch.nn.functional.sigmoid(self.network(torch.unsqueeze(x, dim=0).float())[1])[0], board, 3)
+        # if reward == 1:
+            # self.rewards[
+            #     self.iteration -
+            #     1] = -1  # when opponent wins, the previous move was bad
         self.rewards[self.iteration] = reward
         self.total_reward += reward
         self.iteration += 1

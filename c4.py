@@ -181,14 +181,14 @@ class Board:
         else:
             return 0
 
-    def get_mcst_reward(self, policy_model, value_model, board, lookahead) -> float:
+    def get_mcts_reward(self, policy_model, value_model, board, lookahead) -> float:
         if lookahead == 0 or board.get_reward() == 1:
-            return (value_model(torch.tensor(board.board)) if board.get_reward() == 0 else 1) * (1 if board.get_current_player() == 1 else -1)
+            return (value_model(board.board) if board.get_reward() == 0 else 1) * (1 if board.get_current_player() == 1 else -1)
         else:
             valid_moves = board.get_valid_moves()
             move_probabilities = policy_model(board.board)[valid_moves]
             possible_boards = [board.make_move(move) for move in valid_moves]
-            expected_reward = torch.sum(move_probabilities * torch.tensor([self.get_mcst_reward(policy_model, value_model, board, lookahead - 1) for board in possible_boards]))
+            expected_reward = torch.sum(move_probabilities * torch.tensor([self.get_mcts_reward(policy_model, value_model, board, lookahead - 1) for board in possible_boards]))
             return expected_reward * (1 if board.get_current_player() == 1 else -1)
 
 

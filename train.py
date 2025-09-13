@@ -6,7 +6,7 @@ def train(agent: PpoAgent, episodes: int):
     for episode in range(episodes):
         board = Board()
         while not (board.game_won() or board.game_tied()):
-            agent.act(board.board)
+            agent.act(board)
 
 
 agent = PpoAgent((3, 6, 7), 7)
