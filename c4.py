@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Self
 from abc import ABC, abstractmethod
 from utils import get_user_choice
 import random
@@ -7,16 +7,15 @@ import openai
 import numpy as np
 from dotenv import load_dotenv
 from agent import PpoAgent
-
+import torch
 
 class Board:
     """Four in a Row board implementation"""
 
-    def __init__(self) -> None:
+    def __init__(self, board: torch.Tensor=None, turn: int=0) -> None:
         self.dims: Tuple[int, int] = (6, 7)
-        self.board = np.zeros((3, self.dims[0], self.dims[1]), dtype=int)
-        self.current_player = 'X'
-        self.turn: int = 0
+        self.board = board if board is not None else torch.zeros((3, self.dims[0], self.dims[1]), dtype=torch.int)
+        self.turn = turn
 
     def get_current_player(self) -> int:
         if self.turn % 2 == 0:
@@ -62,66 +61,67 @@ class Board:
                 line = "|"
                 for col in range(self.dims[1]):
                     cell = self.board[:, row, col]
-                    if np.sum(cell) == 0:
+                    if torch.sum(cell) == 0:
                         player_index = 2  # Empty
                     else:
-                        player_index = np.argmax(cell)  # Player 0 or 1
+                        player_index = torch.argmax(cell)  # Player 0 or 1
                     line += art[player_index][i] + "|"
                 lines.append(line)
         lines.append(horizontal_border)
 
         return "\n".join(lines)
 
-    def get_valid_moves(self) -> np.ndarray:
+    def get_valid_moves(self) -> torch.Tensor:
         """Get a list of valid column indices for the current player"""
-        column_sums = np.sum(self.board[:-1], axis=(0, 1))
-        return np.where(column_sums < self.dims[0])[0]
+        column_sums = torch.sum(self.board[:-1], axis=(0, 1))
+        return torch.where(column_sums < self.dims[0])[0]
 
-    def make_move(self, move: int) -> bool:
+    def make_move(self, move: int) -> Self:
         """Play a round of the game by dropping a piece in the specified column"""
         if move not in self.get_valid_moves():
-            return False
+            return None
 
         # Find the lowest empty row in the specified column
         row = self.dims[0] - 1
-        while row >= 0 and np.sum(self.board[:-1], axis=0)[row][move] != 0:
+        while row >= 0 and torch.sum(self.board[:-1], axis=0)[row][move] != 0:
             row -= 1
         self.board[self.get_current_player()][row][move] = 1
         self.turn += 1
         self.board[2][:][:] = self.get_current_player(
         )  # update the turn board
-        return True
+
+        return Board(self.board.clone(), self.turn)
 
     def diagonal_win(self) -> bool:
         """Check if the current player has won the game diagonally"""
-        roll_and_add_player0 = self.board[0].copy(
+        roll_and_add_player0 = self.board[0].clone(
         )  # diagonals bottom left to top right
-        roll_and_add_player0_norm = self.board[0].copy()
-        roll_and_add_player1 = self.board[1].copy(
+        roll_and_add_player0_norm = self.board[0].clone()
+        roll_and_add_player1 = self.board[1].clone(
         )  # diagonals top left to bottom right
-        roll_and_add_player1_norm = self.board[1].copy()
+        roll_and_add_player1_norm = self.board[1].clone()
 
         for i in range(3):
-            roll_and_add_player0 += np.roll(np.roll(self.board[0],
-                                                    shift=-(i + 1),
-                                                    axis=0),
-                                            shift=i + 1,
-                                            axis=1)
-            roll_and_add_player1 += np.roll(np.roll(self.board[1],
-                                                    shift=-(i + 1),
-                                                    axis=0),
-                                            shift=i + 1,
-                                            axis=1)
-            roll_and_add_player0_norm += np.roll(np.roll(self.board[0],
-                                                         shift=i + 1,
-                                                         axis=0),
-                                                 shift=i + 1,
-                                                 axis=1)
-            roll_and_add_player1_norm += np.roll(np.roll(self.board[1],
-                                                         shift=i + 1,
-                                                         axis=0),
-                                                 shift=i + 1,
-                                                 axis=1)
+            roll_and_add_player0 += torch.roll(torch.roll(self.board[0],
+                                                    shifts=-(i + 1),
+                                                    dims=0),
+                                               shifts=i + 1,
+                                               dims=1)
+            roll_and_add_player1 += torch.roll(torch.roll(self.board[1],
+                                                          shifts=-(i + 1),
+                                                          dims=0),
+                                               shifts=i + 1,
+                                               dims=1)
+            roll_and_add_player0_norm += torch.roll(torch.roll(self.board[0],
+                                                               shifts=i + 1,
+                                                               dims=0),
+                                                    shifts=i + 1,
+                                                    dims=1)
+            roll_and_add_player1_norm += torch.roll(torch.roll(self.board[1],
+                                                               shifts=i + 1,
+                                                               dims=0),
+                                                    shifts=i + 1,
+                                                    dims=1)
 
         roll_and_add_player0[-3:, :] = 0
         roll_and_add_player0[:, :3] = 0
@@ -133,37 +133,37 @@ class Board:
         roll_and_add_player1_norm[:, :3] = 0
         roll_and_add_player1_norm[:3, :] = 0
 
-        return np.max(roll_and_add_player0) == 4 or np.max(
-            roll_and_add_player1) == 4 or np.max(
-                roll_and_add_player0_norm) == 4 or np.max(
+        return torch.max(roll_and_add_player0) == 4 or torch.max(
+            roll_and_add_player1) == 4 or torch.max(
+                roll_and_add_player0_norm) == 4 or torch.max(
                     roll_and_add_player1_norm) == 4
 
     def horizontal_win(self) -> bool:
         """Check if the current player has won the game horizontally"""
-        roll_and_add_player0 = self.board[0].copy()
-        roll_and_add_player1 = self.board[1].copy()
+        roll_and_add_player0 = self.board[0].clone()
+        roll_and_add_player1 = self.board[1].clone()
 
         for i in range(3):
-            roll_and_add_player0 += np.roll(self.board[0], shift=i + 1, axis=1)
-            roll_and_add_player1 += np.roll(self.board[1], shift=i + 1, axis=1)
+            roll_and_add_player0 += torch.roll(self.board[0], shifts=i + 1, dims=1)
+            roll_and_add_player1 += torch.roll(self.board[1], shifts=i + 1, dims=1)
 
         roll_and_add_player0[:, :3] = 0
         roll_and_add_player1[:, :3] = 0
-        return np.max(roll_and_add_player0) == 4 or np.max(
+        return torch.max(roll_and_add_player0) == 4 or torch.max(
             roll_and_add_player1) == 4
 
     def vertical_win(self) -> bool:
         """Check if the current player has won the game vertically"""
-        roll_and_add_player0 = self.board[0].copy()
-        roll_and_add_player1 = self.board[1].copy()
+        roll_and_add_player0 = self.board[0].clone()
+        roll_and_add_player1 = self.board[1].clone()
 
         for i in range(3):
-            roll_and_add_player0 += np.roll(self.board[0], shift=i + 1, axis=0)
-            roll_and_add_player1 += np.roll(self.board[1], shift=i + 1, axis=0)
+            roll_and_add_player0 += torch.roll(self.board[0], shifts=i + 1, dims=0)
+            roll_and_add_player1 +=torch.roll(self.board[1], shifts=i + 1, dims=0)
 
         roll_and_add_player0[:3, :] = 0
         roll_and_add_player1[:3, :] = 0
-        return np.max(roll_and_add_player0) == 4 or np.max(
+        return torch.max(roll_and_add_player0) == 4 or torch.max(
             roll_and_add_player1) == 4
 
     def game_won(self) -> bool:
@@ -172,7 +172,7 @@ class Board:
         ) or self.vertical_win()
 
     def game_tied(self) -> bool:
-        return np.sum(self.board,
+        return torch.sum(self.board,
                       axis=(0, 1, 2)) == self.dims[0] * self.dims[1]
 
     def get_reward(self) -> int:
@@ -180,6 +180,16 @@ class Board:
             return 1
         else:
             return 0
+
+    def get_mcst_reward(self, policy_model, value_model, board, lookahead) -> float:
+        if lookahead == 0 or board.get_reward() == 1:
+            return (value_model(torch.tensor(board.board)) if board.get_reward() == 0 else 1) * (1 if board.get_current_player() == 1 else -1)
+        else:
+            valid_moves = board.get_valid_moves()
+            move_probabilities = policy_model(board.board)[valid_moves]
+            possible_boards = [board.make_move(move) for move in valid_moves]
+            expected_reward = torch.sum(move_probabilities * torch.tensor([self.get_mcst_reward(policy_model, value_model, board, lookahead - 1) for board in possible_boards]))
+            return expected_reward * (1 if board.get_current_player() == 1 else -1)
 
 
 class Player(ABC):

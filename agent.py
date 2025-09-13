@@ -106,13 +106,13 @@ class PpoAgent():
             if self.episode % 100 == 0:
               torch.save(self.network.state_dict(), os.path.join(self.save_to_path, f"model-{self.episode}.pth"))
             self.episode += 1
-        a, pi, value = self.choose_action(board)
+        a, pi, value = self.choose_action(board.board)
 
         # a = torch.tensor([random.Random().randint(0, 11)]).cuda() # FOR DEBUGGING
         self.actions_taken[self.iteration] = a
 
         # the state value approximation, i.e. the Q-value approximation.
-        self.values[self.iteration] = value
+        self.values[self.iteration] = torch.nn.functional.sigmoid(value)
 
         # the probability of the sampled action
         self.action_probabilties[self.iteration] = pi.log_prob(a)
@@ -121,7 +121,7 @@ class PpoAgent():
         board.make_move(a.cpu())
 
         self.dones[self.iteration] = board.game_won() or board.game_tied()
-        reward = board.get_reward()
+        reward = board.get_mcts_reward(lambda x: torch.nn.functional.softmax(self.network(x)[0], dim=-1), lambda x: torch.nn.functional.sigmoid(self.network(x)[1]), board, 3)
         if reward == 1:
             self.rewards[
                 self.iteration -
