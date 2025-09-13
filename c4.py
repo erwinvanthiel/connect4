@@ -76,7 +76,7 @@ class Board:
         column_sums = torch.sum(self.board[:-1], axis=(0, 1))
         return torch.where(column_sums < self.dims[0])[0]
 
-    def make_move(self, move: int) -> Self:
+    def make_move(self, move: int, in_place=True) -> Self:
         """Play a round of the game by dropping a piece in the specified column"""
         if move not in self.get_valid_moves():
             return None
@@ -85,12 +85,14 @@ class Board:
         row = self.dims[0] - 1
         while row >= 0 and torch.sum(self.board[:-1], axis=0)[row][move] != 0:
             row -= 1
-        self.board[self.get_current_player()][row][move] = 1
-        self.turn += 1
-        self.board[2][:][:] = self.get_current_player(
+
+        _board = self if in_place else Board(self.board.clone(), self.turn)
+        _board.board[self.get_current_player()][row][move] = 1
+        _board.turn += 1
+        _board.board[2][:][:] = _board.get_current_player(
         )  # update the turn board
 
-        return Board(self.board.clone(), self.turn)
+        return _board
 
     def diagonal_win(self) -> bool:
         """Check if the current player has won the game diagonally"""
@@ -181,15 +183,15 @@ class Board:
         else:
             return 0
 
-    def get_mcts_reward(self, policy_model, value_model, board, lookahead) -> float:
+    def get_mcts_reward(self, policy_model, value_model, board, lookahead, current_player=True) -> float:
         if lookahead == 0 or board.get_reward() == 1:
-            return (value_model(board.board) if board.get_reward() == 0 else 1) * (1 if board.get_current_player() == 1 else -1)
+            return (board.get_reward()) * (1 if current_player else -1)
         else:
             valid_moves = board.get_valid_moves()
             move_probabilities = policy_model(board.board)[valid_moves]
-            possible_boards = [board.make_move(move) for move in valid_moves]
-            expected_reward = torch.sum(move_probabilities * torch.tensor([self.get_mcts_reward(policy_model, value_model, board, lookahead - 1) for board in possible_boards]))
-            return expected_reward * (1 if board.get_current_player() == 1 else -1)
+            possible_boards = [board.make_move(move, in_place=False) for move in valid_moves]
+            expected_reward = torch.sum(move_probabilities * torch.tensor([self.get_mcts_reward(policy_model, value_model, board, lookahead - 1, not current_player) for board in possible_boards]))
+            return expected_reward
 
 
 class Player(ABC):

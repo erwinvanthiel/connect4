@@ -18,10 +18,10 @@ class PpoAgent():
                  gamma=0.99,
                  gae_lambda=0.95,
                  alpha=0.0001,
-                 view_training_process=False,
+                 view_training_process=True,
                  load_from_path=None,
                  train=True,
-                 save_to_path="/content/drive/MyDrive/c4/checkpoints"):
+                 save_to_path=""): #"/content/drive/MyDrive/c4/checkpoints"):
         super(PpoAgent, self).__init__()
         self.train = train
         self.action_probabilties = np.empty(memory_size)
@@ -86,13 +86,6 @@ class PpoAgent():
         # the sampled action
         a = pi.sample().int()
 
-        if self.view_training_process:
-            os.system('cls' if os.name == 'nt' else 'clear')
-            print(board)
-            print(pi.probs)
-            print(valid_moves)
-            input()
-
         return a, pi, value
 
     def act(self, board):
@@ -119,14 +112,20 @@ class PpoAgent():
         board.make_move(a.cpu())
 
         self.dones[self.iteration] = board.game_won() or board.game_tied()
-        reward = board.get_mcts_reward(lambda x: torch.nn.functional.softmax(self.network(torch.unsqueeze(x, dim=0).float())[0], dim=-1)[0], lambda x: torch.nn.functional.sigmoid(self.network(torch.unsqueeze(x, dim=0).float())[1])[0], board, 3)
-        # if reward == 1:
-            # self.rewards[
-            #     self.iteration -
-            #     1] = -1  # when opponent wins, the previous move was bad
+        reward = board.get_mcts_reward(lambda x: torch.nn.functional.softmax(self.network(torch.unsqueeze(x, dim=0).float())[0], dim=-1)[0], lambda x: torch.nn.functional.sigmoid(self.network(torch.unsqueeze(x, dim=0).float())[1])[0], board, 2)
+        if reward == 1:
+            self.rewards[
+                self.iteration -
+                1] = -1  # when opponent wins, the previous move was bad
         self.rewards[self.iteration] = reward
         self.total_reward += reward
         self.iteration += 1
+        
+        if self.view_training_process:
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print(board)
+            print(reward)
+            input()
 
     # Implementation based on
     # https://github.com/philtabor/Youtube-Code-Repository/blob/master/ReinforcementLearning/PolicyGradient/PPO/torch/ppo_torch.py
