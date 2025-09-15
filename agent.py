@@ -18,10 +18,10 @@ class PpoAgent():
                  gamma=0.99,
                  gae_lambda=0.95,
                  alpha=0.0001,
-                 view_training_process=True,
-                 load_from_path=None,
+                 view_training_process=False,
+                 load_from_path="/content/drive/MyDrive/c4/checkpoints/model-30.pth",
                  train=True,
-                 save_to_path=""): #"/content/drive/MyDrive/c4/checkpoints"):
+                 save_to_path="/content/drive/MyDrive/c4/checkpoints"):
         super(PpoAgent, self).__init__()
         self.train = train
         self.action_probabilties = np.empty(memory_size)
@@ -67,7 +67,7 @@ class PpoAgent():
         if load_from_path:
             self.network.load_state_dict(torch.load(load_from_path, map_location=torch.device('cpu')))
 
-        self.episode = 1000
+        self.episode = 30
 
     def choose_action(self, board):
         state = torch.unsqueeze(board.board, dim=0).float().to(self.device)
@@ -95,7 +95,7 @@ class PpoAgent():
             self.learn()
             self.iteration = 0
             self.total_reward = 0
-            if self.episode % 100 == 0:
+            if self.episode % 10 == 0:
               torch.save(self.network.state_dict(), os.path.join(self.save_to_path, f"model-{self.episode}.pth"))
             self.episode += 1
         a, pi, value = self.choose_action(board)
@@ -112,7 +112,7 @@ class PpoAgent():
         board.make_move(a.cpu())
 
         self.dones[self.iteration] = board.game_won() or board.game_tied()
-        reward = board.get_mcts_reward(lambda x: torch.nn.functional.softmax(self.network(torch.unsqueeze(x, dim=0).float())[0], dim=-1)[0], lambda x: torch.nn.functional.sigmoid(self.network(torch.unsqueeze(x, dim=0).float())[1])[0], board, 2)
+        reward = board.get_mcts_reward(lambda x: torch.nn.functional.softmax(self.network(torch.unsqueeze(x, dim=0).float())[0], dim=-1)[0], lambda x: torch.nn.functional.sigmoid(self.network(torch.unsqueeze(x, dim=0).float())[1])[0], board, 2, device=self.device)
         if reward == 1:
             self.rewards[
                 self.iteration -
@@ -120,7 +120,7 @@ class PpoAgent():
         self.rewards[self.iteration] = reward
         self.total_reward += reward
         self.iteration += 1
-        
+
         if self.view_training_process:
             os.system('cls' if os.name == 'nt' else 'clear')
             print(board)

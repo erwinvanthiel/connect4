@@ -73,7 +73,7 @@ class Board:
 
     def get_valid_moves(self) -> torch.Tensor:
         """Get a list of valid column indices for the current player"""
-        column_sums = torch.sum(self.board[:-1], axis=(0, 1))
+        column_sums = torch.sum(self.board[:-1].cpu(), axis=(0, 1))
         return torch.where(column_sums < self.dims[0])[0]
 
     def make_move(self, move: int, in_place=True) -> Self:
@@ -183,14 +183,15 @@ class Board:
         else:
             return 0
 
-    def get_mcts_reward(self, policy_model, value_model, board, lookahead, current_player=True) -> float:
+    def get_mcts_reward(self, policy_model, value_model, board, lookahead, current_player=True, device="cpu") -> float:
         if lookahead == 0 or board.get_reward() == 1:
             return (board.get_reward()) * (1 if current_player else -1)
         else:
             valid_moves = board.get_valid_moves()
-            move_probabilities = policy_model(board.board)[valid_moves]
             possible_boards = [board.make_move(move, in_place=False) for move in valid_moves]
-            expected_reward = torch.sum(move_probabilities * torch.tensor([self.get_mcts_reward(policy_model, value_model, board, lookahead - 1, not current_player) for board in possible_boards]))
+            board.board = board.board.to(device)
+            move_probabilities = policy_model(board.board)[valid_moves]
+            expected_reward = torch.sum(move_probabilities * torch.tensor([self.get_mcts_reward(policy_model, value_model, board, lookahead - 1, not current_player, device) for board in possible_boards]).to(device))
             return expected_reward
 
 
